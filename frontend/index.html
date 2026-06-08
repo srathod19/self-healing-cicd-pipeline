@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Self-Healing CI/CD Agent</title>
+<style>
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --surface2: #f0efe9;
+    --text: #1a1a18;
+    --text2: #6b6a65;
+    --text3: #9c9a92;
+    --border: rgba(0,0,0,0.1);
+    --border2: rgba(0,0,0,0.18);
+    --green: #1D9E75; --green-bg: #E1F5EE; --green-text: #085041;
+    --amber: #BA7517; --amber-bg: #FAEEDA; --amber-text: #633806;
+    --red: #E24B4A; --red-bg: #FCEBEB; --red-text: #791F1F;
+    --blue: #378ADD; --blue-bg: #E6F1FB; --blue-text: #0C447C;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a18; --surface: #242422; --surface2: #2c2c2a;
+      --text: #e8e6de; --text2: #9c9a92; --text3: #6b6a65;
+      --border: rgba(255,255,255,0.08); --border2: rgba(255,255,255,0.14);
+      --green-bg: #04342C; --green-text: #9FE1CB;
+      --amber-bg: #412402; --amber-text: #FAC775;
+      --red-bg: #501313; --red-text: #F7C1C1;
+      --blue-bg: #042C53; --blue-text: #B5D4F4;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+  header { background: var(--surface); border-bottom: 0.5px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 15px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .last-updated { font-size: 12px; color: var(--text3); }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 24px; }
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+  .metric { background: var(--surface2); border-radius: var(--radius-sm); padding: 14px 16px; }
+  .metric-label { font-size: 11px; color: var(--text2); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .metric-val { font-size: 26px; font-weight: 500; }
+  .metric-val.green { color: var(--green); }
+  .metric-val.amber { color: var(--amber); }
+  .metric-val.red { color: var(--red); }
+  .panels { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 14px; }
+  .panel { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .panel-title { font-size: 13px; font-weight: 500; margin-bottom: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; }
+  .run-row { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: var(--radius-sm); cursor: pointer; transition: background .12s; border-bottom: 0.5px solid var(--border); }
+  .run-row:last-child { border-bottom: none; }
+  .run-row:hover { background: var(--surface2); }
+  .run-row.active { background: var(--blue-bg); }
+  .run-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .run-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .run-sub { font-size: 11px; color: var(--text3); }
+  .badge { font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .badge-fixed { background: var(--green-bg); color: var(--green-text); }
+  .badge-escalated { background: var(--amber-bg); color: var(--amber-text); }
+  .badge-failed, .badge-agent_error { background: var(--red-bg); color: var(--red-text); }
+  .badge-running, .badge-processing { background: var(--blue-bg); color: var(--blue-text); }
+  .feed-entry { padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+  .feed-entry:last-child { border-bottom: none; }
+  .feed-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .feed-title { font-size: 13px; font-weight: 500; color: var(--text); }
+  .feed-body { font-size: 12px; color: var(--text2); line-height: 1.6; }
+  .detail-panel { grid-column: 1 / -1; background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px; display: none; }
+  .detail-panel.open { display: block; }
+  .detail-title { font-size: 14px; font-weight: 500; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .detail-field { font-size: 12px; }
+  .detail-field label { color: var(--text3); display: block; margin-bottom: 2px; }
+  .detail-field span { color: var(--text); font-weight: 500; }
+  .reasoning-box { background: var(--surface2); border-radius: var(--radius-sm); padding: 12px; font-size: 12px; color: var(--text2); line-height: 1.7; margin-top: 8px; white-space: pre-wrap; word-break: break-word; }
+  .close-btn { font-size: 11px; color: var(--text3); background: none; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); padding: 3px 10px; cursor: pointer; }
+  .pr-link { font-size: 12px; color: var(--blue); text-decoration: none; }
+  .pr-link:hover { text-decoration: underline; }
+  .empty { color: var(--text3); font-size: 13px; padding: 20px 0; text-align: center; }
+  .conf-bar { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .conf-track { flex: 1; height: 4px; background: var(--border2); border-radius: 2px; overflow: hidden; }
+  .conf-fill { height: 100%; border-radius: 2px; }
+  @media (max-width: 700px) {
+    .metrics { grid-template-columns: 1fr 1fr; }
+    .panels { grid-template-columns: 1fr; }
+    .detail-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="status-dot"></span> Self-Healing CI/CD Agent</h1>
+  <span class="last-updated" id="last-updated">Loading...</span>
+</header>
+<main>
+  <div class="metrics" id="metrics">
+    <div class="metric"><div class="metric-label">Total runs</div><div class="metric-val" id="m-total">—</div></div>
+    <div class="metric"><div class="metric-label">Auto-fixed</div><div class="metric-val green" id="m-fixed">—</div></div>
+    <div class="metric"><div class="metric-label">Escalated</div><div class="metric-val amber" id="m-escalated">—</div></div>
+    <div class="metric"><div class="metric-label">Avg confidence</div><div class="metric-val" id="m-conf">—</div></div>
+  </div>
+  <div class="panels" id="panels">
+    <div class="panel">
+      <div class="panel-title">Pipeline runs</div>
+      <div id="runs-list"><div class="empty">Loading runs...</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Agent reasoning feed</div>
+      <div id="feed-list"><div class="empty">Loading feed...</div></div>
+    </div>
+    <div class="detail-panel" id="detail-panel">
+      <div class="detail-title">
+        <span id="detail-heading">Run detail</span>
+        <button class="close-btn" onclick="closeDetail()">close</button>
+      </div>
+      <div class="detail-grid" id="detail-grid"></div>
+      <div id="detail-reasoning"></div>
+    </div>
+  </div>
+</main>
+<script>
+  const API = (window.AGENT_API_URL || "").replace(/\/$/, "") || "https://your-app.onrender.com";
+
+  let allRuns = [];
+  let activeId = null;
+
+  function dotColor(outcome) {
+    if (outcome === "fixed") return "#1D9E75";
+    if (outcome === "escalated") return "#BA7517";
+    if (outcome === "failed" || outcome === "agent_error") return "#E24B4A";
+    return "#378ADD";
+  }
+
+  function timeAgo(ts) {
+    const diff = (Date.now() - new Date(ts)) / 1000;
+    if (diff < 60) return `${Math.round(diff)}s ago`;
+    if (diff < 3600) return `${Math.round(diff/60)}m ago`;
+    if (diff < 86400) return `${Math.round(diff/3600)}h ago`;
+    return `${Math.round(diff/86400)}d ago`;
+  }
+
+  function renderRuns(runs) {
+    const el = document.getElementById("runs-list");
+    if (!runs.length) { el.innerHTML = '<div class="empty">No runs yet.</div>'; return; }
+    el.innerHTML = runs.map(r => `
+      <div class="run-row ${activeId === r.run_id ? 'active' : ''}" onclick="showDetail('${r.run_id}')">
+        <span class="run-dot" style="background:${dotColor(r.outcome)}"></span>
+        <span class="run-name" title="${r.repo} / ${r.workflow}">${r.branch} / ${r.workflow}</span>
+        <span class="badge badge-${r.outcome || 'processing'}">${r.outcome || 'processing'}</span>
+        <span class="run-sub">${timeAgo(r.timestamp)}</span>
+      </div>`).join("");
+  }
+
+  function renderFeed(runs) {
+    const el = document.getElementById("feed-list");
+    const entries = runs.filter(r => r.reasoning).slice(0, 6);
+    if (!entries.length) { el.innerHTML = '<div class="empty">No agent activity yet.</div>'; return; }
+    el.innerHTML = entries.map(r => `
+      <div class="feed-entry">
+        <div class="feed-head">
+          <span class="run-dot" style="background:${dotColor(r.outcome)}"></span>
+          <span class="feed-title">${r.branch} / ${r.workflow}</span>
+          <span class="badge badge-${r.outcome || 'processing'}">${r.outcome || '...'}</span>
+        </div>
+        <div class="feed-body">${(r.reasoning || "").slice(0, 160)}${r.reasoning && r.reasoning.length > 160 ? "…" : ""}</div>
+      </div>`).join("");
+  }
+
+  function renderMetrics(runs) {
+    document.getElementById("m-total").textContent = runs.length;
+    document.getElementById("m-fixed").textContent = runs.filter(r => r.outcome === "fixed").length;
+    document.getElementById("m-escalated").textContent = runs.filter(r => r.outcome === "escalated").length;
+    const confs = runs.filter(r => r.confidence != null).map(r => r.confidence);
+    document.getElementById("m-conf").textContent = confs.length
+      ? Math.round((confs.reduce((a,b)=>a+b,0)/confs.length)*100) + "%"
+      : "—";
+  }
+
+  function showDetail(id) {
+    const run = allRuns.find(r => r.run_id === id);
+    if (!run) return;
+    activeId = id;
+    renderRuns(allRuns);
+
+    document.getElementById("detail-heading").textContent = `${run.branch} / ${run.workflow}`;
+
+    const conf = run.confidence != null ? Math.round(run.confidence * 100) : null;
+    const confColor = conf >= 75 ? "#1D9E75" : conf >= 50 ? "#BA7517" : "#E24B4A";
+
+    document.getElementById("detail-grid").innerHTML = `
+      <div class="detail-field"><label>Repo</label><span>${run.repo || "—"}</span></div>
+      <div class="detail-field"><label>Error type</label><span>${run.error_type || "—"}</span></div>
+      <div class="detail-field"><label>Outcome</label><span class="badge badge-${run.outcome}">${run.outcome || "—"}</span></div>
+      <div class="detail-field"><label>Confidence</label>
+        ${conf != null ? `<div class="conf-bar"><div class="conf-track"><div class="conf-fill" style="width:${conf}%;background:${confColor}"></div></div><span>${conf}%</span></div>` : "<span>—</span>"}
+      </div>
+      ${run.pr_url ? `<div class="detail-field" style="grid-column:1/-1"><label>PR opened</label><a class="pr-link" href="${run.pr_url}" target="_blank">${run.pr_url}</a></div>` : ""}
+      <div class="detail-field"><label>Time</label><span>${new Date(run.timestamp).toLocaleString()}</span></div>
+    `;
+
+    document.getElementById("detail-reasoning").innerHTML = run.reasoning
+      ? `<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Agent reasoning</div><div class="reasoning-box">${run.reasoning}</div>`
+      : "";
+
+    const panel = document.getElementById("detail-panel");
+    panel.classList.add("open");
+    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function closeDetail() {
+    activeId = null;
+    document.getElementById("detail-panel").classList.remove("open");
+    renderRuns(allRuns);
+  }
+
+  async function refresh() {
+    try {
+      const [runsRes, feedRes] = await Promise.all([
+        fetch(`${API}/runs?limit=20`),
+        fetch(`${API}/feed?limit=10`),
+      ]);
+      const runs = await runsRes.json();
+      allRuns = runs;
+      renderRuns(runs);
+      renderMetrics(runs);
+      const feed = await feedRes.json();
+      renderFeed(feed);
+      document.getElementById("last-updated").textContent = "Updated " + timeAgo(new Date().toISOString());
+    } catch (e) {
+      document.getElementById("last-updated").textContent = "API unreachable";
+    }
+  }
+
+  refresh();
+  setInterval(refresh, 30000);
+</script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+wheels/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+.env/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+nosetests.xml
+*.cover
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# LangSmith / LangChain cache
+.langchain.db
+langchain_cache/
+
+# Schema snapshot (auto-generated at runtime)
+schema_snapshot.json
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite3
+
+# Zip / build artifacts
+*.zip
+*.tar.gz
+dist/
+
+# Render
+.render-buildpacks.json
+
+# Node (if you add a frontend build step later)
+node_modules/
+.npm

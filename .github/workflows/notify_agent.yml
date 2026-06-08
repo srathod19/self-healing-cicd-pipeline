@@ -1,0 +1,33 @@
+name: Notify self-healing agent on failure
+
+on:
+  workflow_run:
+    workflows: ["*"]          # watches ALL your workflows
+    types: [completed]
+
+jobs:
+  notify-agent:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download logs
+        uses: actions/github-script@v7
+        id: get-logs
+        with:
+          script: |
+            const run_id = context.payload.workflow_run.id;
+            const logs = await github.rest.actions.downloadWorkflowRunLogs({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id,
+            });
+            // logs.data is a zip; we pass the URL and let the agent fetch it
+            core.setOutput('logs_url', logs.url);
+
+      - name: Send to self-healing agent
+        run: |
+          curl -s -X POST "${{ secrets.AGENT_WEBHOOK_URL }}/webhook/github" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: $(echo -n '${{ toJson(github.event) }}' | openssl dgst -sha256 -hmac '${{ secrets.AGENT_WEBHOOK_SECRET }}' | awk '{print "sha256="$2}')" \
+            -H "X-GitHub-Event: workflow_run" \
+            -d '${{ toJson(github.event) }}'
