@@ -13,7 +13,7 @@ GEMINI_KEY = os.getenv("GOOGLE_API_KEY", "")
 SLACK_WEBHOOK = os.getenv("SLACK_WEBHOOK_URL", "")
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash",
+    model="gemini-1.5-flash",
     google_api_key=GEMINI_KEY,
     temperature=0.2,
 )
@@ -47,7 +47,14 @@ def classify_error(state):
     error_type = "unknown"
     error_detail = text
 
-    for t in ["schema_drift", "missing_env", "import_error", "test_failure", "lint_error", "dependency_conflict"]:
+    for t in [
+        "schema_drift",
+        "missing_env",
+        "import_error",
+        "test_failure",
+        "lint_error",
+        "dependency_conflict",
+    ]:
         if t in text.lower().replace(" ", "_"):
             error_type = t
             break
@@ -59,14 +66,16 @@ def reason_and_patch(state):
     """Use Gemini with tools to reason about root cause and produce a patch."""
     msgs = [
         SystemMessage(content=REASONING_PROMPT),
-        HumanMessage(content=(
-            f"Repo: {state.get('repo')}\n"
-            f"Branch: {state.get('branch')}\n"
-            f"Error type: {state.get('error_type')}\n"
-            f"Error detail: {state.get('error_detail')}\n"
-            f"Logs:\n{state['raw_logs'][:2000]}\n\n"
-            "Produce a JSON response with keys: reasoning, patch, patch_file, confidence (0-1)."
-        )),
+        HumanMessage(
+            content=(
+                f"Repo: {state.get('repo')}\n"
+                f"Branch: {state.get('branch')}\n"
+                f"Error type: {state.get('error_type')}\n"
+                f"Error detail: {state.get('error_detail')}\n"
+                f"Logs:\n{state['raw_logs'][:2000]}\n\n"
+                "Produce a JSON response with keys: reasoning, patch, patch_file, confidence (0-1)."
+            )
+        ),
     ]
 
     response = llm_with_tools.invoke(msgs)
