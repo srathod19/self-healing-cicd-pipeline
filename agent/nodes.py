@@ -66,35 +66,47 @@ def reason_and_patch(state):
     """Use Gemini with tools to reason about root cause and produce a patch."""
     msgs = [
         SystemMessage(content=REASONING_PROMPT),
-        HumanMessage(
-            content=(
-                f"Repo: {state.get('repo')}\n"
-                f"Branch: {state.get('branch')}\n"
-                f"Error type: {state.get('error_type')}\n"
-                f"Error detail: {state.get('error_detail')}\n"
-                f"Logs:\n{state['raw_logs'][:2000]}\n\n"
-                "Produce a JSON response with keys: reasoning, patch, patch_file, confidence (0-1)."
-            )
-        ),
+        HumanMessage(content=(
+            f"Repo: {state.get('repo')}\n"
+            f"Branch: {state.get('branch')}\n"
+            f"Error type: {state.get('error_type')}\n"
+            f"Error detail: {state.get('error_detail')}\n"
+            f"Logs:\n{state['raw_logs'][:2000]}\n\n"
+            "Produce a JSON response with keys: reasoning, patch, patch_file, confidence (0-1)."
+        )),
     ]
 
     response = llm_with_tools.invoke(msgs)
-
+    raw = response.content
+    reasoning = raw
     patch = None
     patch_file = None
     confidence = 0.5
-    reasoning = response.content
 
-    json_match = re.search(r"\{.*\}", response.content, re.DOTALL)
-    if json_match:
-        try:
-            data = json.loads(json_match.group())
-            patch = data.get("patch")
-            patch_file = data.get("patch_file")
-            confidence = float(data.get("confidence", 0.5))
-            reasoning = data.get("reasoning", reasoning)
-        except Exception:
-            pass
+    # strip markdown code fences if present
+    cleaned = re.sub(r"```(?:json)?", "", raw).replace("```", "").strip()
+
+    # try full parse first
+    try:
+        data = json.loads(cleaned)
+        patch = data.get("patch")
+        patch_file = data.get("patch_file")
+        confidence = float(data.get("confidence", 0.5))
+        reasoning = data.get("reasoning", raw)
+    except Exception:
+        # fallback: find first {...} block
+        json_match = re.search(r"\{[\s\S]*\}", cleaned)
+        if json_match:
+            try:
+                data = json.loads(json_match.group())
+                patch = data.get("patch")
+                patch_file = data.get("patch_file")
+                confidence = float(data.get("confidence", 0.5))
+                reasoning = data.get("reasoning", raw)
+            except Exception:
+                # last resort: just use raw text as reasoning
+                reasoning = raw
+                confidence = 0.4
 
     return {
         "patch": patch,
