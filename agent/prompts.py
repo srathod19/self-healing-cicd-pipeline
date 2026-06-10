@@ -23,7 +23,7 @@ Rules:
 - If the fix requires a database migration, provide the alembic command, not raw SQL
 - Be conservative: if unsure, lower your confidence score
 
-Respond ONLY with a valid JSON object:
+Respond ONLY with a valid JSON object with NO markdown fences, NO extra text:
 {
   "reasoning": "step-by-step explanation of root cause",
   "patch": "the exact file content change as a unified diff string, or null if no patch",
@@ -32,7 +32,7 @@ Respond ONLY with a valid JSON object:
 }
 
 Confidence guide:
-- 0.9+ : clear root cause, trivial safe fix (missing env var, unused import)
+- 0.9+ : clear root cause, trivial safe fix (missing env var, unused import, syntax error)
 - 0.75-0.9 : high confidence, low-risk change
 - 0.5-0.75 : moderate confidence, escalate
 - <0.5 : unclear, always escalate
