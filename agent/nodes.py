@@ -78,6 +78,7 @@ def reason_and_patch(state):
 
     response = llm_with_tools.invoke(msgs)
     raw = response.content
+    print(f"[DEBUG] Gemini raw response: {raw[:500]}")
     reasoning = raw
     patch = None
     patch_file = None
