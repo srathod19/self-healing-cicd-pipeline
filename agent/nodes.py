@@ -4,7 +4,7 @@ import re
 import httpx
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
-from agent.tools import ALL_TOOLS, read_log
+from agent.tools import ALL_TOOLS
 from github_integration.pr import create_pr
 from drift.schema_watcher import detect_schema_drift
 from agent.prompts import CLASSIFIER_PROMPT, REASONING_PROMPT
@@ -16,23 +16,22 @@ llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     google_api_key=GEMINI_KEY,
     temperature=0.2,
-    max_tokens=3000,  # increase from 1000 to 3000
+    max_tokens=3000,
 )
 llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
 
 def detect_failure(state):
-    """Parse the raw webhook payload and extract key failure info."""
+    """Pass logs through directly — do NOT filter them."""
     logs = state.get("raw_logs", "")
-    relevant = read_log.invoke({"log_text": logs, "max_lines": 80})
 
+    # Check for schema drift and append if found
     drift_result = detect_schema_drift()
-
-    combined = relevant
     if drift_result:
-        combined += f"\n\n[SCHEMA DRIFT DETECTED]\n{drift_result}"
+        logs += f"\n\n[SCHEMA DRIFT DETECTED]\n{drift_result}"
 
-    return {"raw_logs": combined}
+    print(f"[DETECT] logs length: {len(logs)}, preview: {logs[:200]}")
+    return {"raw_logs": logs}
 
 
 def classify_error(state):
@@ -48,18 +47,12 @@ def classify_error(state):
     error_type = "unknown"
     error_detail = text
 
-    for t in [
-        "schema_drift",
-        "missing_env",
-        "import_error",
-        "test_failure",
-        "lint_error",
-        "dependency_conflict",
-    ]:
+    for t in ["schema_drift", "missing_env", "import_error", "test_failure", "lint_error", "dependency_conflict"]:
         if t in text.lower().replace(" ", "_"):
             error_type = t
             break
 
+    print(f"[CLASSIFY] error_type: {error_type}")
     return {"error_type": error_type, "error_detail": text}
 
 
@@ -72,23 +65,24 @@ def reason_and_patch(state):
             f"Branch: {state.get('branch')}\n"
             f"Error type: {state.get('error_type')}\n"
             f"Error detail: {state.get('error_detail')}\n"
-            f"Logs:\n{state['raw_logs'][:2000]}\n\n"
+            f"Logs:\n{state['raw_logs'][:3000]}\n\n"
             "Produce a JSON response with keys: reasoning, patch, patch_file, confidence (0-1)."
         )),
     ]
 
     response = llm_with_tools.invoke(msgs)
     raw = response.content
-    print(f"[DEBUG] Gemini raw response: {raw[:500]}")
+    print(f"[DEBUG] Gemini raw response: {raw[:800]}")
+
     reasoning = raw
     patch = None
     patch_file = None
     confidence = 0.5
 
-    # strip markdown code fences if present
+    # Strip markdown code fences
     cleaned = re.sub(r"```(?:json)?", "", raw).replace("```", "").strip()
 
-    # try full parse first
+    # Try full parse first
     try:
         data = json.loads(cleaned)
         patch = data.get("patch")
@@ -96,8 +90,8 @@ def reason_and_patch(state):
         confidence = float(data.get("confidence", 0.5))
         reasoning = data.get("reasoning", raw)
     except Exception:
-        # fallback: find first {...} block
-        json_match = re.search(r"\{[\s\S]*\}", cleaned)
+        # Fallback: find first {...} block
+        json_match = re.search(r"\{[\s\S]*?\}", cleaned)
         if json_match:
             try:
                 data = json.loads(json_match.group())
@@ -106,10 +100,10 @@ def reason_and_patch(state):
                 confidence = float(data.get("confidence", 0.5))
                 reasoning = data.get("reasoning", raw)
             except Exception:
-                # last resort: just use raw text as reasoning
                 reasoning = raw
                 confidence = 0.4
 
+    print(f"[REASON] confidence: {confidence}, patch_file: {patch_file}")
     return {
         "patch": patch,
         "patch_file": patch_file,
