@@ -16,6 +16,7 @@ llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     google_api_key=GEMINI_KEY,
     temperature=0.2,
+    max_tokens=3000,  # increase from 1000 to 3000
 )
 llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
