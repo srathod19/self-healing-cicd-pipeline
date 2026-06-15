@@ -76,9 +76,16 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
     if wf.get("conclusion") != "failure":
         return JSONResponse({"status": "ignored", "conclusion": wf.get("conclusion")})
 
-    # ✅ Use real logs from notify_agent.yml if present, fallback to wf JSON
-    raw_logs = payload.get("raw_logs") or json.dumps(wf)
-    print(f"[SERVER] raw_logs preview: {raw_logs[:300]}")
+   # Only accept payloads with real logs from notify_agent.yml
+    raw_logs = payload.get("raw_logs", "")
+    
+    # If raw_logs looks like raw GitHub JSON (starts with {), reject it
+    # Real logs from notify_agent.yml start with "Workflow:"
+    if not raw_logs or raw_logs.strip().startswith("{"):
+        print(f"[SERVER] Rejected — no real logs in payload, waiting for notify_agent.yml")
+        return JSONResponse({"status": "ignored", "reason": "no_real_logs"})
+    
+    print(f"[SERVER] raw_logs length: {len(raw_logs)}, preview: {raw_logs[:300]}")
 
     state = {
         "run_id": str(wf.get("id", uuid.uuid4())),
